@@ -46,12 +46,3 @@ def getBusData(BUSLINE):
         df['StopID'] = df['StopID'].str.replace('MTA_', '')
 
     return df.to_json(orient='records')
-
-def loadData():
-    #Set base path (source from Huy)
-    basePath = os.path.dirname(__file__)
-    #Load data fom local JSON file (using path)
-    nyc_restaurant_data = json.load(open(os.path.join(basePath,'nyc_restaurants_by_cuisine.json'), 'r'))
-    #use the normalize method to flatten the data into a pandas datafrae
-    dfNYCRestaurant = json_normalize(nyc_restaurant_data)
-    return dfNYCRestaurant
