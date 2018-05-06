@@ -3,24 +3,37 @@
 // code data in this lab. The cuisine data will be served through Carto
 // Database back-end.
 // =====================================================================
-const ZIPCODE_URL = "https://raw.githubusercontent.com/hvo/datasets/master/nyc_zip.geojson";
+//1.1.1.3
+var fixed_route = "B52";
+var bus_route = '';
+var pos = [];
+const MTA_BUS_URL = "https://sbg389.pythonanywhere.com/vis/";
+//console.log(MTA_BUS_URL);
+
+var atStopCols = '';
+var approachingCols = '';
+var colStops = '';
+var subwaySource = {};
+var TestSource = {};
+var stopName = '';
+
+function updateBus(bus) {
+     var bus_route = bus;
+     console.log(MTA_BUS_URL)
+  }
 
 // =====================================================================
-// We are then asking D3 to read both of the files asynchronously with
-// d3.queue(). Note that after this call, the data is NOT ready. They
-// are only being put on the queue for the browser to fetch the data
-// in the background (using the specified d3.json() function) since 
-// loading files over the network always take time!
-//
-// Once the download completes, regardless being successful or not, D3
-// will call the function that we provide in await() to handle the data
-// or the error, respectively. In this case, it will call createPlot().
-//
 // NOTE: since we only need the zip code, there's only one defer() here.
 // =====================================================================
+
+function startViz(){
+    var route = document.getElementsByName('busInput')[0].value.toUpperCase()
+
+}
+
 d3.queue()
-  .defer(d3.json, ZIPCODE_URL)
-  .await(initVisualization);
+        .defer(d3.json, MTA_BUS_URL + fixed_route)
+        .await(initVisualization);
 
 // =====================================================================
 // This is where all the actions happen. The function signature is:
@@ -32,22 +45,104 @@ d3.queue()
 // setup in this callback function. We cannot do:
 // data = d3.queue()...
 // and then setup right after because the data would not be ready.
-// 
+//
 // In this case, once we have the shape file, we will setup the chart,
 // and a LeafLet map accordingly.
 // =====================================================================
-function initVisualization(error, zipcodes) {
-  let svg       = d3.select("svg"),
+
+function getLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(setPosition);
+    } else {
+          pos = [40.692908,-73.9896452];
+    }
+}
+
+function setPosition(position) {
+    pos.push(position.coords.latitude);
+    pos.push(position.coords.longitude);
+    console.log(pos);
+}
+
+function updateBus (){
+
+    var route = document.getElementsByName('busInput')[0].value.toUpperCase();
+
+    d3.queue()
+        .defer(d3.json, MTA_BUS_URL + route)
+        .await(refreshVisualization);
+}
+
+function refreshVisualization (error, data){
+  //From The MTA BUS API lets get the active buses
+  //And where they are in relation to its stops
+
+    atStopCols = '';
+    approachingCols = '';
+    colStops = '';
+
+  for(var i = 0; i < data.length; ++i) {
+    var stopID = data[i]['StopID'];
+    var busStatus = data[i]['StopStatus'];
+    var stop_name = data[i]['StopName'];
+
+    if (stopID !== null) {
+
+        colStops = colStops + '\'' + stopID +'\',';
+
+        //find approaching
+         if (busStatus == "approaching" || busStatus == "< 1 stop away") {
+            approachingCols = approachingCols + '\'' + stopID +'\',';
+         } else {
+            atStopCols = atStopCols + '\'' + stopID +'\',';
+         };
+         if (busStatus == "at stop") {
+            stopName = stop_name + '\'' + stop_name +'\',';
+         } else {
+            atStopCols = atStopCols + '\'' + stopID +'\',';
+         };
+
+        colStops = colStops + '\'' + stopID +'\',';
+        //  colStops = colStops + '\'' + stopID +'\',';
+        //  colStops = colStops + '\'' + stopID +'\',';
+        }
+
+    }
+
+  approachingCols = approachingCols.slice(0, -1)
+  atStopCols = atStopCols.slice(0, -1)
+  colStops = colStops.slice(0, -1)
+  stopName = stopName.slice(0,-1)
+
+
+  approachingCols = '(' + approachingCols + ')'
+  colStops = '(' + colStops + ')'
+  atStopCols = '(' + atStopCols + ')'
+  stopName = '(' + stopName + ')'
+
+  console.log("ColStops (ALL): ",colStops)
+  console.log("At Stop: ", atStopCols)
+  console.log("Approaching: ", approachingCols)
+
+  queryAtStops = ` SELECT * FROM bus_stops where stop_id IN  ${atStopCols} `;
+  queryApproachingStops = ` SELECT * FROM bus_stops where stop_id IN  ${approachingCols} `;
+  subwaySource.setQuery(queryAtStops);
+  TestSource.setQuery(queryApproachingStops);
+
+}
+
+function initVisualization(error, data) {
+
+    // Get current location
+    getLocation();
+
+    let svg       = d3.select("svg"),
       gChart    = svg.append("g"),
 
       // This is our LeafLet map with an editable circle selection.
       // See createBaseMap() for more details.
       baseMap   = createBaseMap(),
-      
-      // This holds the current selection of our application, the label
-      // for the cuisine, and the counts per zip code.
-      selection = {cuisine: 'All', data: []};
-  
+
       // This is to initiate a Carto's client to access the data and
       // visualizations on Carto. Note, for public data sets, we don't
       // need an API Key.
@@ -55,62 +150,127 @@ function initVisualization(error, zipcodes) {
                     apiKey: 'NoNeed',
                     username: 'sbg389',
                   });
-  
-  // First, populate our leaflet map
-  createMap(baseMap, zipcodes, selection);
 
-  // Then, we add a layer from Carto showing the subway entrances. We
-  // also need the data SQL source so that we can alter the query when
-  // our circle selection is changed.
-  let subwaySource = createCartoLayer(client, baseMap);
-  
-  // Finally, we monitor the selection change events so that we know when
-  // to update our SQL.
-  setupSelectionHandlers(baseMap, subwaySource);
+      //From The MTA BUS API lets get the active buses
+      //And where they are in relation to its stops
+      for(var i = 0; i < data.length; ++i) {
+        var stopID = data[i]['StopID'];
+        var busStatus = data[i]['StopStatus'];
+        var stop_name = data[i]['StopName'];
+
+        if (stopID !== null) {
+
+        colStops = colStops + '\'' + stopID +'\',';
+
+        //find approaching
+         if (busStatus == "approaching" || busStatus == "< 1 stop away") {
+            approachingCols = approachingCols + '\'' + stopID +'\',';
+         } else {
+            atStopCols = atStopCols + '\'' + stopID +'\',';
+         };
+         if (busStatus == "at stop") {
+            stopName = stop_name + '\'' + stop_name +'\',';
+         } else {
+            atStopCols = atStopCols + '\'' + stopID +'\',';
+         };
+
+        colStops = colStops + '\'' + stopID +'\',';
+        //  colStops = colStops + '\'' + stopID +'\',';
+        //  colStops = colStops + '\'' + stopID +'\',';
+        }
+
+    }
+
+      approachingCols = approachingCols.slice(0, -1)
+      atStopCols = atStopCols.slice(0, -1)
+      colStops = colStops.slice(0, -1)
+      stopName = stopName.slice(0,-1)
+
+
+      approachingCols = '(' + approachingCols + ')'
+      colStops = '(' + colStops + ')'
+      atStopCols = '(' + atStopCols + ')'
+      stopName = '(' + stopName + ')'
+
+      console.log("ColStops (ALL): ",colStops)
+      console.log("At Stop: ", atStopCols)
+      console.log("Approaching: ", approachingCols)
+
+      // First, populate our leaflet map
+      createMap(baseMap, data);
+
+      // And go fetch the restaurants data from Carto, and build the chart
+      //createChartFromCarto(client, gChart, baseMap[1], selection);
+
+      // Then, we add a layer from Carto showing the subway entrances. We
+      // also need the data SQL source so that we can alter the query when
+      // our circle selection is changed.
+      var sources =  createCartoLayer(client, baseMap)
+      let subwaySource = sources[0];
+      let TestSrouce = sources[1];
+
+      // Finally, we monitor the selection change events so that we know when
+      // to update our SQL.
+      setupSelectionHandlers(baseMap, subwaySource, TestSource);
 }
-// =====================================================================
-// This is for us to show a static (canned) visualization using the data
-// on Carto. Here, we pretty much "copy and paste" the SQL and CSS from
-// Carto's Builder over.
-// =====================================================================
+
 function createCartoLayer(client, baseMap) {
-  
+
+//   console.log(colStops)
+
   // We specify the data source for our visualization, which is the
   // subway entrances. We can use the Data's SQL part from the Builder.
-  let subwaySource = new carto.source.SQL(`
-    SELECT *
-      FROM bus_stops
+  //let subwaySource = new carto.source.SQL(`
+  //SELECT * FROM bus_stops where stop_id = 501398
+  //`);
+
+  subwaySource = new carto.source.SQL(`
+    SELECT * FROM bus_stops where stop_id IN ${approachingCols}
   `);
 
   // We also need to style our data, through CartoCSS, which is also
   // copied over from the Builder
   let subwayStyle= new carto.style.CartoCSS(`
     #layer {
-  marker-width: 7;
-  marker-fill: #7b3c41;
+  marker-width: 15;
+  marker-fill: #f2ea07;
   marker-fill-opacity: 0.9;
   marker-allow-overlap: true;
   marker-line-width: 1;
-  marker-line-color: #FFFFFF;
+  marker-line-color: #000000;
   marker-line-opacity: 1;
   }
   `);
-  
+
+  TestSource = new carto.source.SQL(`
+    SELECT * FROM bus_stops where stop_id IN ${atStopCols}
+  `);
+
+  let TestStyle= new carto.style.CartoCSS(`
+    #layer {
+  marker-width: 15;
+  marker-fill: #04660b;
+  marker-fill-opacity: 0.9;
+  marker-allow-overlap: true;
+  marker-line-width: 1;
+  marker-line-color: #000000;
+  marker-line-opacity: 1;
+  }
+  `);
+
   // After that, we just tell Carto to create a layer with both the style
   // and the data. The good thing is Carto supports LeafLet!
   let subwayLayer = new carto.layer.Layer(subwaySource, subwayStyle);
+  let TestLayer = new carto.layer.Layer(TestSource, TestStyle)
   client.addLayer(subwayLayer);
+  client.addLayer(TestLayer)
   client.getLeafletLayer().addTo(baseMap[2]);
-  return subwaySource;
+  return [subwaySource, TestSource];
 }
-// =====================================================================
-// This is similar to what we have in the previous labs, except that
-// instead of passing the data, we pass the current selection with both
-// the cuisine name and the data.
-// =====================================================================
+
 function createMap(baseMap, zipcodes, selection) {
-  
-  function projectPoint(x, y) {
+
+function projectPoint(x, y) {
     let point = dMap.latLngToLayerPoint(new L.LatLng(y, x));
     this.stream.point(point.x, point.y);
   }
@@ -120,24 +280,24 @@ function createMap(baseMap, zipcodes, selection) {
       svg        = baseMap[0],
       g          = baseMap[1],
       dMap       = baseMap[2];
-  
+
   // The legend control is an overlay layer, i.e. it doesn't move with
   // the user interactions. We create this control through LeafLet, and
   // add it to our map.
   let legendControl   = L.control({position: 'topleft'});
-  
+
   // On adding the legend to LeafLet, we will setup a <div> to show
   // the selection information.
   legendControl.onAdd = addLegendToMap;
   legendControl.addTo(dMap);
-  
+
   // The tricky part now is we need to sync up the projection between
   // LeafLet and D3's shapes. We need to write a special handler for
   // that, naming reproject(). This will get called whenever the user
   // zoon in or out with the map.
   dMap.on("zoomend", reproject);
   reproject();
-  
+
   // This function gets called when we first add the legend box. We
   // perform some styling to make it looks nice here.
   function addLegendToMap(map) {
@@ -172,67 +332,13 @@ function createMap(baseMap, zipcodes, selection) {
     // Then also transform our map group
     g.attr("transform", `translate(${-topLeft[0]}, ${-topLeft[1]})`);
 
-    // And update the actual D3 visual elements
-    let zipShapes = g.selectAll(".zipcode")
-      .data(zipcodes.features); // we rejoin the data
-    zipShapes
-      .enter().append("path")
-        .attr("class", "zipcode")
-      .merge(zipShapes) // and perform updates on both match and unmatches
-        .attr("d", path);
-
     // Redraw the map
-    updateMap(g, selection);
+    //updateMap(g, selection);
   }
 }
 
 function updateMap(g, selection) {
-  let data     = selection.data,
-      maxCount = d3.max(data, d => d[1]),
-      steps    = 5,
-      color    = d3.scaleThreshold()
-                   .domain(d3.range(0, maxCount, maxCount/steps))
-                   .range(d3.schemeBlues[steps])
-      zipcodes = g.selectAll(".zipcode")
-                   .data(data, d => (d[0]?d[0]:d.properties.zipcode)),
-      x        = d3.scaleLinear()
-                   .domain([0, maxCount])
-                   .rangeRound([50, 300]),
-      legend   = d3.select(".legend");
 
-  zipcodes
-    .transition().duration(300)
-    .style("fill", d => color(d[1]));
-  
-  zipcodes.exit()
-    .transition().duration(300)
-    .style("fill", "none");
-  
-  let boxes = legend.selectAll("rect")
-    .data(color.range().map(function(d) {
-        d = color.invertExtent(d);
-        return [(d[0]!==null?d[0]:x.domain()[0]),
-                (d[1]!==null?d[1]:x.domain()[1])];
-      }));
-
-  boxes
-    .enter().append("rect")
-    .merge(boxes)
-      .attr("height", 6)
-      .attr("x", d => x(d[0]))
-      .attr("width", d => (x(d[1]) - x(d[0])))
-      .attr("fill", d => 'SteelBlue');
-
-  legend.call(d3.axisBottom(x)
-      .ticks(steps, "s")
-      .tickSize(10,0)
-      .tickValues(color.domain()))
-    .select(".domain")
-      .remove();
-  
-  legend.select(".axis--map--caption")
-    .attr("x", x.range()[0])
-    .text(`Number of ${selection.cuisine} Restaurants`);
 }
 
 function createBaseMap() {
@@ -250,15 +356,15 @@ function createBaseMap() {
                   }),
       svg       = d3.select(dMap.getPanes().overlayPane).append("svg"),
 			g         = svg.append("g").attr("class", "leaflet-zoom-hide");
-  
+
   L.control.layers({
                     "Light": baseLight,
                     "Dark" : baseDark,
-                   }, 
+                   },
                    {
                     "Selection": circle,
                    }).addTo(dMap);
-  
+
   let infoBox = L.control({position: 'bottomleft'});
   infoBox.onAdd = function (map) {var div = L.DomUtil.create('div', 'infobox'); return div;}
   infoBox.addTo(dMap);
@@ -266,7 +372,7 @@ function createBaseMap() {
   return [svg, g, dMap, circle];
 }
 
-function setupSelectionHandlers(baseMap, subwaySource) {
+function setupSelectionHandlers(baseMap, subwaySource, TestSource) {
   let dMap    = baseMap[2],
       circle  = baseMap[3],
       infoBox = d3.select(".infobox.leaflet-control");
@@ -289,11 +395,17 @@ function setupSelectionHandlers(baseMap, subwaySource) {
       let radius = circle.getRadius(),
           lat    = circle.getLatLng().lat.toFixed(4),
           lng    = circle.getLatLng().lng.toFixed(4),
-          query  = `SELECT * FROM bus_stops
-                    WHERE ST_DWithin(the_geom::geography,
-                    CDB_LatLng(${lat},${lng})::geography,${radius})
-          `;
-      subwaySource.setQuery(query);
+          query  = `SELECT *
+                      FROM bus_stops
+                     WHERE ST_DWithin(the_geom::geography,
+                                      CDB_LatLng(${lat},${lng})::geography,
+                                      ${radius})          `;
+      queryAtStops = ` SELECT * FROM bus_stops where stop_id IN  ${atStopCols} `;
+      queryApproachingStops = ` SELECT * FROM bus_stops where stop_id IN  ${approachingCols} `;
+      subwaySource.setQuery(queryAtStops);
+      TestSource.setQuery(queryApproachingStops);
+      console.log(queryAtStops);
+      console.log(queryApproachingStops);
     }
   }
 
@@ -302,9 +414,9 @@ function setupSelectionHandlers(baseMap, subwaySource) {
         lat     = circle.getLatLng().lat.toFixed(4),
         lng     = circle.getLatLng().lng.toFixed(4),
         caption = `<table style='width:100%'>
-                   <tr><th>Coords</th><td>${lat},${lng}</td></tr>
-                   <tr><th>Radius</th><td>${radius}</td></tr>
+                   <tr><th>Location:</th><td>${lat},${lng}</td></tr>
+                   <tr><th>At Stop(s):</th><td>${stopName}</td></tr>
                    </table>`;
     infoBox.html(caption);
-  }    
+  }
 }

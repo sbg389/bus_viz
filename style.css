@@ -17,13 +17,13 @@
   display: inline-block;
 }
 
-.legendbox {
-  background: rgba(255,255,255,0.7);
-  box-shadow: 0 0 15px rgba(0,0,0,0.2);
-  border-radius: 5px;
-  height: 45px;
-  width: 300px;
-}
+/*.legendbox {*/
+/*  background: rgba(255,255,255,0.7);*/
+/*  box-shadow: 0 0 15px rgba(0,0,0,0.2);*/
+/*  border-radius: 5px;*/
+/*  height: 45px;*/
+/*  width: 300px;*/
+/*}*/
 
 .bar {
   fill: lightgrey;
@@ -97,8 +97,9 @@
   line-height: 14px;
   font-size: 14px;
   color: #000000;
-  width: 170px;
-  height: 38px;
+  position: relative;
+
+
 
   margin-top: 0px;
   padding: 8px 8px;
