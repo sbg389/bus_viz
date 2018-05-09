@@ -3,19 +3,44 @@
 // code data in this lab. The cuisine data will be served through Carto
 // Database back-end.
 // =====================================================================
-//1.1.1.3
+//1.1.1.5 -- adding multiple 0, 1 colstops for direction
 var fixed_route = "B52";
 var bus_route = '';
 var pos = [];
 const MTA_BUS_URL = "https://sbg389.pythonanywhere.com/vis/";
+const MTA_STOPS_URL = "https://sbg389.pythonanywhere.com/stops/"
 //console.log(MTA_BUS_URL);
 
 var atStopCols = '';
 var approachingCols = '';
+var localBusStops = '';
+//var atStopColsD1 = '';
+//var approachingColsD1 = '';
 var colStops = '';
 var subwaySource = {};
 var TestSource = {};
 var stopName = '';
+
+// Global Variable for the Map
+mainMap = {};
+
+// Collection to store the bus stops coordinates
+var colCoordinates = new Array ( );
+colCoordinates[0] = new Array ();
+colCoordinates[1] = new Array ();
+
+// Variable for the center of the route
+var routeCenter = [];
+
+// functions to get max and min from arrays
+// to be used with the colCoordinates
+Array.min = function( array ){
+    return Math.min.apply( Math, array );
+};
+
+Array.max = function( array ){
+    return Math.max.apply( Math, array );
+};
 
 function updateBus(bus) {
      var bus_route = bus;
@@ -23,32 +48,15 @@ function updateBus(bus) {
   }
 
 // =====================================================================
-// NOTE: since we only need the zip code, there's only one defer() here.
+// use d3. queue to load the default route data and initialize
 // =====================================================================
-
-function startViz(){
-    var route = document.getElementsByName('busInput')[0].value.toUpperCase()
-
-}
 
 d3.queue()
         .defer(d3.json, MTA_BUS_URL + fixed_route)
         .await(initVisualization);
 
-// =====================================================================
-// This is where all the actions happen. The function signature is:
-// - 1st argument     : error to indicate whether the queue has
-//                      completed successfully or not
-// - 2nd to the rest  : the result for each task on the queue, i.e.
-//                      the data from the d3.json calls.
-// If there are data-dependent setup in our webpage, we must put those
-// setup in this callback function. We cannot do:
-// data = d3.queue()...
-// and then setup right after because the data would not be ready.
-//
-// In this case, once we have the shape file, we will setup the chart,
-// and a LeafLet map accordingly.
-// =====================================================================
+//try to Get the location from the browser
+//if it cant, then default to CUSP
 
 function getLocation() {
     if (navigator.geolocation) {
@@ -57,6 +65,8 @@ function getLocation() {
           pos = [40.692908,-73.9896452];
     }
 }
+
+// Add the location to a given  variable
 
 function setPosition(position) {
     pos.push(position.coords.latitude);
@@ -73,20 +83,71 @@ function updateBus (){
         .await(refreshVisualization);
 }
 
-function refreshVisualization (error, data){
+function xRay () {
+
+     // Get the Bus that is beign analyzed
+     var route = document.getElementsByName('busInput')[0].value.toUpperCase();
+
+     // Get the location and pan the map there
+     mainMap.panTo(new L.LatLng(pos[0],pos[1]));
+
+    console.log(MTA_STOPS_URL + route + '/' + pos[0] + '/' + pos[1]);
+
+     d3.queue()
+            .defer(d3.json, MTA_STOPS_URL + route + '/' + pos[0] + '/' + pos[1])
+            .await(refreshXRay);
+
+}
+
+function refreshXRay (error, data, baseMap){
+
+    localBusStops = '' ;
+
+    for(var i = 0; i < data.length; ++i) {
+        var stopID = data[i]['StopID'];
+        var stop_name = data[i]['StopName'];
+        var direction = data[i]['StopDirection'];
+
+        localBusStops = localBusStops + '\'' + stopID +'\',';
+    }
+
+    localBusStops = localBusStops.slice(0,-1);
+    localBusStops = '(' + localBusStops + ')';
+
+    console.log(localBusStops);
+
+    queryNearByStops = ` SELECT * FROM bus_stops where stop_id IN  ${localBusStops} `;
+
+    nearByStopsSource.setQuery(queryNearByStops);
+
+}
+
+function refreshVisualization (error, data, baseMap){
   //From The MTA BUS API lets get the active buses
   //And where they are in relation to its stops
 
+    // Clear previous values for global variables
     atStopCols = '';
     approachingCols = '';
+    atStopColsD1 = '';
+    approachingColsD1 = '';
     colStops = '';
+    colCoordinates = new Array ( );
+    colCoordinates[0] = new Array ();
+    colCoordinates[1] = new Array ();
+    routeCenter = [];
 
   for(var i = 0; i < data.length; ++i) {
     var stopID = data[i]['StopID'];
     var busStatus = data[i]['StopStatus'];
     var stop_name = data[i]['StopName'];
+    var direction = data[i]['DirectionRef'];
 
     if (stopID !== null) {
+
+        // Load data on the collection of coordinates
+        colCoordinates[0].push(data[i]['Latitude']);
+        colCoordinates[1].push(data[i]['Longitude']);
 
         colStops = colStops + '\'' + stopID +'\',';
 
@@ -114,7 +175,6 @@ function refreshVisualization (error, data){
   colStops = colStops.slice(0, -1)
   stopName = stopName.slice(0,-1)
 
-
   approachingCols = '(' + approachingCols + ')'
   colStops = '(' + colStops + ')'
   atStopCols = '(' + atStopCols + ')'
@@ -124,10 +184,36 @@ function refreshVisualization (error, data){
   console.log("At Stop: ", atStopCols)
   console.log("Approaching: ", approachingCols)
 
+  midLat = (Array.min(colCoordinates[0]) +
+            Array.max(colCoordinates[0])) / 2;
+
+  midLon =  (Array.min(colCoordinates[1]) +
+            Array.max(colCoordinates[1])) / 2;
+
+  routeCenter.push (midLat);
+  routeCenter.push (midLon);
+
+  console.log(routeCenter);
+
   queryAtStops = ` SELECT * FROM bus_stops where stop_id IN  ${atStopCols} `;
   queryApproachingStops = ` SELECT * FROM bus_stops where stop_id IN  ${approachingCols} `;
+
   subwaySource.setQuery(queryAtStops);
   TestSource.setQuery(queryApproachingStops);
+
+  lat = pos[0];
+  lng = pos[1];
+
+  infoBox = d3.select(".infobox.leaflet-control");
+  caption = `<table style='width:100%'>
+                   <tr><th>Location:</th><td>${lat},${lng}</td></tr>
+                   <tr><th>At Stop(s):</th><td>${stopName}</td></tr>
+                   </table>`;
+  infoBox.html(caption);
+
+  mainMap.panTo(new L.LatLng(routeCenter[0],routeCenter[1]));
+
+  console.log(mainMap.layers)
 
 }
 
@@ -157,6 +243,8 @@ function initVisualization(error, data) {
         var stopID = data[i]['StopID'];
         var busStatus = data[i]['StopStatus'];
         var stop_name = data[i]['StopName'];
+        var direction = data[i]['DirectionRef'];
+
 
         if (stopID !== null) {
 
@@ -186,7 +274,6 @@ function initVisualization(error, data) {
       colStops = colStops.slice(0, -1)
       stopName = stopName.slice(0,-1)
 
-
       approachingCols = '(' + approachingCols + ')'
       colStops = '(' + colStops + ')'
       atStopCols = '(' + atStopCols + ')'
@@ -199,7 +286,6 @@ function initVisualization(error, data) {
       // First, populate our leaflet map
       createMap(baseMap, data);
 
-      // And go fetch the restaurants data from Carto, and build the chart
       //createChartFromCarto(client, gChart, baseMap[1], selection);
 
       // Then, we add a layer from Carto showing the subway entrances. We
@@ -207,11 +293,11 @@ function initVisualization(error, data) {
       // our circle selection is changed.
       var sources =  createCartoLayer(client, baseMap)
       let subwaySource = sources[0];
-      let TestSrouce = sources[1];
+      let TestSource = sources[1];
+      let nearByStopsSource = sources[2];
 
-      // Finally, we monitor the selection change events so that we know when
-      // to update our SQL.
-      setupSelectionHandlers(baseMap, subwaySource, TestSource);
+      mainMap = baseMap[2];
+      setupSelectionHandlers(baseMap, subwaySource, TestSource, nearByStopsSource);
 }
 
 function createCartoLayer(client, baseMap) {
@@ -258,87 +344,138 @@ function createCartoLayer(client, baseMap) {
   }
   `);
 
+  nearByStopsSource = new carto.source.SQL(`
+    SELECT * FROM bus_stops where stop_id = 0
+  `);
+
+  let nearByStopsStyle= new carto.style.CartoCSS(`
+  #layer {
+  marker-width: 15;
+  marker-fill: #68595a;
+  marker-fill-opacity: 0.9;
+  marker-allow-overlap: true;
+  marker-line-width: 1;
+  marker-line-color: #FFFFFF;
+  marker-line-opacity: 1;
+  }
+  `);
+
+  //Direction
+
   // After that, we just tell Carto to create a layer with both the style
   // and the data. The good thing is Carto supports LeafLet!
   let subwayLayer = new carto.layer.Layer(subwaySource, subwayStyle);
-  let TestLayer = new carto.layer.Layer(TestSource, TestStyle)
+  let TestLayer = new carto.layer.Layer(TestSource, TestStyle);
+  let nearByStopsLayer =  new carto.layer.Layer(nearByStopsSource, nearByStopsStyle);
   client.addLayer(subwayLayer);
-  client.addLayer(TestLayer)
+  client.addLayer(TestLayer);
+  client.addLayer(nearByStopsLayer);
   client.getLeafletLayer().addTo(baseMap[2]);
-  return [subwaySource, TestSource];
+  return [subwaySource, TestSource, nearByStopsSource];
 }
 
 function createMap(baseMap, zipcodes, selection) {
 
-function projectPoint(x, y) {
-    let point = dMap.latLngToLayerPoint(new L.LatLng(y, x));
-    this.stream.point(point.x, point.y);
-  }
+    function projectPoint(x, y) {
+        let point = dMap.latLngToLayerPoint(new L.LatLng(y, x));
+        this.stream.point(point.x, point.y);
+      }
 
-  let projection = d3.geoTransform({point: projectPoint}),
-      path       = d3.geoPath().projection(projection),
-      svg        = baseMap[0],
-      g          = baseMap[1],
-      dMap       = baseMap[2];
+      let projection = d3.geoTransform({point: projectPoint}),
+          path       = d3.geoPath().projection(projection),
+          svg        = baseMap[0],
+          g          = baseMap[1],
+          dMap       = baseMap[2];
 
-  // The legend control is an overlay layer, i.e. it doesn't move with
-  // the user interactions. We create this control through LeafLet, and
-  // add it to our map.
-  let legendControl   = L.control({position: 'topleft'});
+      // The legend control is an overlay layer, i.e. it doesn't move with
+      // the user interactions. We create this control through LeafLet, and
+      // add it to our map.
+      let legendControl   = L.control({position: 'topleft'});
 
-  // On adding the legend to LeafLet, we will setup a <div> to show
-  // the selection information.
-  legendControl.onAdd = addLegendToMap;
-  legendControl.addTo(dMap);
+      // On adding the legend to LeafLet, we will setup a <div> to show
+      // the selection information.
+      legendControl.onAdd = addLegendToMap;
+      legendControl.addTo(dMap);
 
-  // The tricky part now is we need to sync up the projection between
-  // LeafLet and D3's shapes. We need to write a special handler for
-  // that, naming reproject(). This will get called whenever the user
-  // zoon in or out with the map.
-  dMap.on("zoomend", reproject);
-  reproject();
+      // The tricky part now is we need to sync up the projection between
+      // LeafLet and D3's shapes. We need to write a special handler for
+      // that, naming reproject(). This will get called whenever the user
+      // zoon in or out with the map.
+      dMap.on("zoomend", reproject);
+      reproject();
 
-  // This function gets called when we first add the legend box. We
-  // perform some styling to make it looks nice here.
-  function addLegendToMap(map) {
-    let div    = L.DomUtil.create('div', 'legendbox'),
-        ndiv   = d3.select(div)
-                   .style("left", "50px")
-                   .style("top", "-75px"),
-        lsvg   = ndiv.append("svg"),
-        legend = lsvg.append("g")
-                   .attr("class", "legend")
-                   .attr("transform", "translate(0, 20)");
-    legend.append("text")
-      .attr("class", "axis--map--caption")
-      .attr("y", -6);
-    return div;
-  };
+      // This function gets called when we first add the legend box. We
+      // perform some styling to make it looks nice here.
+      function addLegendToMap(map) {
+        let div    = L.DomUtil.create('div', 'legendbox'),
+            ndiv   = d3.select(div)
+                       .style("left", "50px")
+                       .style("top", "-75px"),
+            lsvg   = ndiv.append("svg"),
+            legend = lsvg.append("g")
+                       .attr("class", "legend")
+                       .attr("transform", "translate(0, 20)");
+        legend.append("text")
+          .attr("class", "axis--map--caption")
+          .attr("y", -6)
+          .text("Legend");
 
-  // This function realign the shapes to the zoom level of LeafLef map.
-  // The key action here is to get the bounds of the geometries in this
-  // zoom, reproject the path, and update all geometries with the new
-  // reprojected information.
-  function reproject() {
-    // First we compute the bounds, and shift our SVG accordingly
-		bounds = path.bounds(zipcodes);
-    let topLeft     = bounds[0],
-        bottomRight = bounds[1];
-    svg.attr("width", bottomRight[0] - topLeft[0])
-      .attr("height", bottomRight[1] - topLeft[1])
-      .style("left", topLeft[0] + "px")
-      .style("top", topLeft[1] + "px");
+        legend.append("g")
+            .attr("width", 7)
+            .attr("height", 7)
+            .append("circle")
+            .attr("cx", 7)
+            .attr("cy", 7)
+            .attr("r", 7)
+            .style("fill", "#04660b")
+            .attr("stroke-width", .5)
+            .attr("stroke", "black")
+            .attr("transform", "translate(22, 12)");
 
-    // Then also transform our map group
-    g.attr("transform", `translate(${-topLeft[0]}, ${-topLeft[1]})`);
+        legend.append("text")
+           .text("Bus At Stop")
+           .attr("transform", "translate(40, 24)");
 
-    // Redraw the map
-    //updateMap(g, selection);
-  }
-}
+        legend.append("g")
+            .attr("width", 7)
+            .attr("height", 7)
+            .append("circle")
+            .attr("cx", 7)
+            .attr("cy", 7)
+            .attr("r", 7)
+            .style("fill", "#f2ea07")
+            .attr("stroke-width", .5)
+            .attr("stroke", "black")
+            .attr("transform", "translate(22, 36)");
 
-function updateMap(g, selection) {
+        legend.append("text")
+           .text("Bus Approaching Stop")
+           .attr("transform", "translate(40, 48)");
 
+
+        return div;
+      };
+
+      // This function realign the shapes to the zoom level of LeafLef map.
+      // The key action here is to get the bounds of the geometries in this
+      // zoom, reproject the path, and update all geometries with the new
+      // reprojected information.
+      function reproject() {
+        // First we compute the bounds, and shift our SVG accordingly
+    		bounds = path.bounds(zipcodes);
+        let topLeft     = bounds[0],
+            bottomRight = bounds[1];
+        svg.attr("width", bottomRight[0] - topLeft[0])
+          .attr("height", bottomRight[1] - topLeft[1])
+          .style("left", topLeft[0] + "px")
+          .style("top", topLeft[1] + "px");
+
+        // Then also transform our map group
+        g.attr("transform", `translate(${-topLeft[0]}, ${-topLeft[1]})`);
+
+        // Redraw the map
+        //updateMap(g, selection);
+      }
 }
 
 function createBaseMap() {

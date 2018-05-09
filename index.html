@@ -11,7 +11,7 @@
   <script src="https://cartodb-libs.global.ssl.fastly.net/carto.js/v4.0.1/carto.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.2/leaflet.draw.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.2/leaflet.draw.js"></script>
-  <script src="vizApp.js?v=1.1.1.3" type="text/javascript"></script>
+  <script src="vizApp.js?v=1.1.1.6" type="text/javascript"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,6 +21,7 @@
             Bus Route:
         <input type="text" name='busInput' id='busInput' value = 'B53'/></label>
         <button id='updateButton' onclick='updateBus()'>Update</button>
+        <button id='centerButton' onclick='xRay()'>XRay</button>
     </div><br /><br />
 <div id="map"></div>
 </body>
