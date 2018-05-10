@@ -1,5 +1,5 @@
 from flask import Flask, Response
-from analysis import getBusData, getStopsData
+from analysis import getBusData, getStopsData, getBusesData
 
 app = Flask(__name__, static_url_path='', static_folder='.')
 app.add_url_rule('/', 'root', lambda: app.send_static_file('index.html'))
@@ -30,6 +30,18 @@ def visualizeStops(busLine, lat, long):
         }
     )
 
+@app.route('/buses/<lat>,<long>')
+def visualizeBuses(lat, long):
+
+    response = getBusesData(lat, long)
+
+    return Response(response,
+        mimetype='application/json',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
 
 
 

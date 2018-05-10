@@ -1,7 +1,5 @@
 // =====================================================================
-// The usual definition for our data source URLs. We only need the zip
-// code data in this lab. The cuisine data will be served through Carto
-// Database back-end.
+// BUS_VIZ: A real time visualization tool for new york public buses
 // =====================================================================
 //1.1.1.5 -- adding multiple 0, 1 colstops for direction
 var fixed_route = "B52";
@@ -9,17 +7,23 @@ var bus_route = '';
 var pos = [];
 const MTA_BUS_URL = "https://sbg389.pythonanywhere.com/vis/";
 const MTA_STOPS_URL = "https://sbg389.pythonanywhere.com/stops/"
+const MTA_BUSES_URL = "https://sbg389.pythonanywhere.com/buses/"
+
+//http://sbg389.pythonanywhere.com/buses/40.692908,-73.9896452
+
 //console.log(MTA_BUS_URL);
 
 var atStopCols = '';
 var approachingCols = '';
 var localBusStops = '';
+var localBuses = '';
 //var atStopColsD1 = '';
 //var approachingColsD1 = '';
 var colStops = '';
-var subwaySource = {};
+var busSource = {};
 var TestSource = {};
 var stopName = '';
+var currentBus = '';
 
 // Global Variable for the Map
 mainMap = {};
@@ -51,6 +55,8 @@ function updateBus(bus) {
 // use d3. queue to load the default route data and initialize
 // =====================================================================
 
+currentBus = fixed_route;
+
 d3.queue()
         .defer(d3.json, MTA_BUS_URL + fixed_route)
         .await(initVisualization);
@@ -74,10 +80,31 @@ function setPosition(position) {
     console.log(pos);
 }
 
+function removeDuplicates(arr){
+    let unique_array = []
+    for(let i = 0;i < arr.length; i++){
+        if(unique_array.indexOf(arr[i]) == -1){
+            unique_array.push(arr[i])
+        }
+    }
+    return unique_array
+}
+
 function updateBus (){
 
     var route = document.getElementsByName('busInput')[0].value.toUpperCase();
+    currentBus = route;
 
+    currentBus = route;
+    d3.queue()
+        .defer(d3.json, MTA_BUS_URL + route)
+        .await(refreshVisualization);
+}
+
+function updateBusClick (route){
+
+    currentBus = route;
+    console.log(route);
     d3.queue()
         .defer(d3.json, MTA_BUS_URL + route)
         .await(refreshVisualization);
@@ -87,6 +114,7 @@ function xRay () {
 
      // Get the Bus that is beign analyzed
      var route = document.getElementsByName('busInput')[0].value.toUpperCase();
+    currentBus = route;
 
      // Get the location and pan the map there
      mainMap.panTo(new L.LatLng(pos[0],pos[1]));
@@ -122,15 +150,69 @@ function refreshXRay (error, data, baseMap){
 
 }
 
-function refreshVisualization (error, data, baseMap){
+function getBuses() {
+
+     // Get the Bus that is beign analyzed
+     var route = document.getElementsByName('busInput')[0].value.toUpperCase();
+
+     // Get the location and pan the map there
+     mainMap.panTo(new L.LatLng(pos[0],pos[1]));
+
+    console.log(MTA_BUSES_URL + pos[0] + ',' + pos[1]);
+
+     d3.queue()
+            .defer(d3.json, MTA_BUSES_URL + pos[0] + ',' + pos[1])
+            .await(refreshBuses);
+}
+
+function refreshBuses (error, data, baseMap){
+
+    localBuses = '' ;
+    var arrLocalBuses = new Array()
+    localBusesStops = '';
+
+    var linkRef = `<a href="javascript:updateBusClick('`;
+    var linkRefEnd = `')">`;
+
+    for(var i = 0; i < data.length; ++i) {
+        var busline = data[i]['busline'];
+        var stopID = data[i]['StopID'];
+        var direction = data[i]['StopDirection'];
+
+        console.log(busline);
+        console.log(arrLocalBuses.includes(busline));
+
+        //check if the bus exist already
+        if  (!arrLocalBuses.includes(busline)){
+            localBuses = localBuses + linkRef + busline + linkRefEnd + busline + '</a><br>';
+        }
+        arrLocalBuses.push(busline);
+        localBusesStops = localBusesStops + '\'' + stopID +'\',';
+    }
+
+    localBusesStops = localBusesStops.slice(0,-1);
+    localBusesStops = '(' + localBusesStops + ')';
+
+    console.log(localBuses);
+
+    querylocalBusesStops = ` SELECT * FROM bus_stops where stop_id IN  ${localBusesStops} `;
+
+    localBusesStopsSource.setQuery(querylocalBusesStops);
+
+    L.marker(pos).addTo(mainMap)
+    .bindPopup(localBuses)
+    .openPopup();
+}
+
+function refreshVisualization (error, data, baseMap, busline){
   //From The MTA BUS API lets get the active buses
   //And where they are in relation to its stops
 
     // Clear previous values for global variables
     atStopCols = '';
     approachingCols = '';
-    atStopColsD1 = '';
-    approachingColsD1 = '';
+    //atStopColsD1 = '';
+    //approachingColsD1 = '';
     colStops = '';
     colCoordinates = new Array ( );
     colCoordinates[0] = new Array ();
@@ -198,22 +280,24 @@ function refreshVisualization (error, data, baseMap){
   queryAtStops = ` SELECT * FROM bus_stops where stop_id IN  ${atStopCols} `;
   queryApproachingStops = ` SELECT * FROM bus_stops where stop_id IN  ${approachingCols} `;
 
-  subwaySource.setQuery(queryAtStops);
+  busSource.setQuery(queryAtStops);
+  console.log(queryAtStops);
+
   TestSource.setQuery(queryApproachingStops);
+  console.log(queryApproachingStops);
 
   lat = pos[0];
   lng = pos[1];
 
   infoBox = d3.select(".infobox.leaflet-control");
   caption = `<table style='width:100%'>
+                   <tr><th>Bus Line:</th><td>${currentBus}</td></tr>
                    <tr><th>Location:</th><td>${lat},${lng}</td></tr>
                    <tr><th>At Stop(s):</th><td>${stopName}</td></tr>
                    </table>`;
   infoBox.html(caption);
 
   mainMap.panTo(new L.LatLng(routeCenter[0],routeCenter[1]));
-
-  console.log(mainMap.layers)
 
 }
 
@@ -292,12 +376,13 @@ function initVisualization(error, data) {
       // also need the data SQL source so that we can alter the query when
       // our circle selection is changed.
       var sources =  createCartoLayer(client, baseMap)
-      let subwaySource = sources[0];
+      let busSource = sources[0];
       let TestSource = sources[1];
       let nearByStopsSource = sources[2];
+      let localBusesStopsSource = sources [3];
 
       mainMap = baseMap[2];
-      setupSelectionHandlers(baseMap, subwaySource, TestSource, nearByStopsSource);
+
 }
 
 function createCartoLayer(client, baseMap) {
@@ -306,11 +391,11 @@ function createCartoLayer(client, baseMap) {
 
   // We specify the data source for our visualization, which is the
   // subway entrances. We can use the Data's SQL part from the Builder.
-  //let subwaySource = new carto.source.SQL(`
+  //let busSource = new carto.source.SQL(`
   //SELECT * FROM bus_stops where stop_id = 501398
   //`);
 
-  subwaySource = new carto.source.SQL(`
+  busSource = new carto.source.SQL(`
     SELECT * FROM bus_stops where stop_id IN ${approachingCols}
   `);
 
@@ -360,26 +445,44 @@ function createCartoLayer(client, baseMap) {
   }
   `);
 
-  //Direction
+  localBusesStopsSource = new carto.source.SQL(`
+    SELECT * FROM bus_stops where stop_id = 0
+  `);
+
+  let localBusesStopsStyle= new carto.style.CartoCSS(`
+  #layer {
+  marker-width: 15;
+  marker-fill: #68595a;
+  marker-fill-opacity: 0.9;
+  marker-allow-overlap: true;
+  marker-line-width: 1;
+  marker-line-color: #FFFFFF;
+  marker-line-opacity: 1;
+  }
+  `);
 
   // After that, we just tell Carto to create a layer with both the style
   // and the data. The good thing is Carto supports LeafLet!
-  let subwayLayer = new carto.layer.Layer(subwaySource, subwayStyle);
+  let subwayLayer = new carto.layer.Layer(busSource, subwayStyle);
   let TestLayer = new carto.layer.Layer(TestSource, TestStyle);
   let nearByStopsLayer =  new carto.layer.Layer(nearByStopsSource, nearByStopsStyle);
+  let localBusesStopsLayer =  new carto.layer.Layer(localBusesStopsSource, localBusesStopsStyle);
+
   client.addLayer(subwayLayer);
   client.addLayer(TestLayer);
   client.addLayer(nearByStopsLayer);
+  client.addLayer(localBusesStopsLayer);
   client.getLeafletLayer().addTo(baseMap[2]);
-  return [subwaySource, TestSource, nearByStopsSource];
+  return [busSource, TestSource, nearByStopsSource, localBusesStopsSource];
 }
 
 function createMap(baseMap, zipcodes, selection) {
 
-    function projectPoint(x, y) {
+function projectPoint(x, y) {
+
         let point = dMap.latLngToLayerPoint(new L.LatLng(y, x));
         this.stream.point(point.x, point.y);
-      }
+}
 
       let projection = d3.geoTransform({point: projectPoint}),
           path       = d3.geoPath().projection(projection),
@@ -417,7 +520,8 @@ function createMap(baseMap, zipcodes, selection) {
                        .attr("transform", "translate(0, 20)");
         legend.append("text")
           .attr("class", "axis--map--caption")
-          .attr("y", -6)
+          .attr("y", 1)
+          .attr("x", 7)
           .text("Legend");
 
         legend.append("g")
@@ -443,7 +547,7 @@ function createMap(baseMap, zipcodes, selection) {
             .attr("cx", 7)
             .attr("cy", 7)
             .attr("r", 7)
-            .style("fill", "#f2ea07")
+            .style("fill", "#f2ea07") //f2ea07
             .attr("stroke-width", .5)
             .attr("stroke", "black")
             .attr("transform", "translate(22, 36)");
@@ -451,6 +555,22 @@ function createMap(baseMap, zipcodes, selection) {
         legend.append("text")
            .text("Bus Approaching Stop")
            .attr("transform", "translate(40, 48)");
+
+           legend.append("g")
+            .attr("width", 7)
+            .attr("height", 7)
+            .append("circle")
+            .attr("cx", 7)
+            .attr("cy", 7)
+            .attr("r", 7)
+            .style("fill", "#68595a")
+            .attr("stroke-width", .5)
+            .attr("stroke", "black")
+            .attr("transform", "translate(22, 60)");
+
+        legend.append("text")
+           .text("Closest Bus Stops")
+           .attr("transform", "translate(40, 72)");
 
 
         return div;
@@ -494,66 +614,10 @@ function createBaseMap() {
       svg       = d3.select(dMap.getPanes().overlayPane).append("svg"),
 			g         = svg.append("g").attr("class", "leaflet-zoom-hide");
 
-  L.control.layers({
-                    "Light": baseLight,
-                    "Dark" : baseDark,
-                   },
-                   {
-                    "Selection": circle,
-                   }).addTo(dMap);
 
   let infoBox = L.control({position: 'bottomleft'});
   infoBox.onAdd = function (map) {var div = L.DomUtil.create('div', 'infobox'); return div;}
   infoBox.addTo(dMap);
 
   return [svg, g, dMap, circle];
-}
-
-function setupSelectionHandlers(baseMap, subwaySource, TestSource) {
-  let dMap    = baseMap[2],
-      circle  = baseMap[3],
-      infoBox = d3.select(".infobox.leaflet-control");
-
-  dMap.on(L.Draw.Event.EDITMOVE, updateQueryStatus);
-  dMap.on(L.Draw.Event.EDITRESIZE, updateQueryStatus);
-  dMap.on('mouseup', updateQuery);
-
-  let circleUpdated = true;
-  updateQueryStatus(null);
-
-  function updateQueryStatus(e) {
-    circleUpdated = true;
-    updateCaption();
-  }
-
-  function updateQuery(e) {
-    if (circleUpdated) {
-      circleUpdated = false;
-      let radius = circle.getRadius(),
-          lat    = circle.getLatLng().lat.toFixed(4),
-          lng    = circle.getLatLng().lng.toFixed(4),
-          query  = `SELECT *
-                      FROM bus_stops
-                     WHERE ST_DWithin(the_geom::geography,
-                                      CDB_LatLng(${lat},${lng})::geography,
-                                      ${radius})          `;
-      queryAtStops = ` SELECT * FROM bus_stops where stop_id IN  ${atStopCols} `;
-      queryApproachingStops = ` SELECT * FROM bus_stops where stop_id IN  ${approachingCols} `;
-      subwaySource.setQuery(queryAtStops);
-      TestSource.setQuery(queryApproachingStops);
-      console.log(queryAtStops);
-      console.log(queryApproachingStops);
-    }
-  }
-
-  function updateCaption() {
-    let radius  = L.GeometryUtil.readableDistance(circle.getRadius(), true),
-        lat     = circle.getLatLng().lat.toFixed(4),
-        lng     = circle.getLatLng().lng.toFixed(4),
-        caption = `<table style='width:100%'>
-                   <tr><th>Location:</th><td>${lat},${lng}</td></tr>
-                   <tr><th>At Stop(s):</th><td>${stopName}</td></tr>
-                   </table>`;
-    infoBox.html(caption);
-  }
 }

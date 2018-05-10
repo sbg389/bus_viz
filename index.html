@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <html>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3mobile.css">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
@@ -20,8 +22,9 @@
         <label>
             Bus Route:
         <input type="text" name='busInput' id='busInput' value = 'B53'/></label>
-        <button id='updateButton' onclick='updateBus()'>Update</button>
-        <button id='centerButton' onclick='xRay()'>XRay</button>
+        <button id='updateButton' onclick='updateBus()'>Query Bus</button>
+        <button id='centerButton' onclick='xRay()'>Local Stops</button>
+        <button id='centerButton' onclick='getBuses()'>Local Buses</button>
     </div><br /><br />
 <div id="map"></div>
 </body>

@@ -82,3 +82,30 @@ def getStopsData(lat, long, busLine):
     #Clean the stopID
     df['StopID'] = df['StopID'].str.replace('MTA_', '')
     return df.to_json(orient='records')
+
+def getBusesData(lat, long):
+    MTAKEY = 'e106ffee-0fd1-4f89-bcda-30cf0d9e50c6'
+    url = " http://bustime.mta.info/api/where/stops-for-location.json?" + \
+    "lat=%s&lon=%s&latSpan=0.005&lonSpan=0.005&key=%s"%(lat,long, MTAKEY)
+    mtadata = requests.get(url).json()
+    data = mtadata['data']['stops']
+    numberOfStops = len(data)
+
+    #Create the pandas dataframe to store the data
+    columns = ['busline','Latitude','Longitude','StopName','StopStatus', "StopID", 'StopDirection']
+    df = pd.DataFrame(columns=columns)
+
+     #iterate through all the stops
+    for i in range (0, numberOfStops):
+        for j in range (0, len(data[i]['routes'])):
+            line =  data[i]['routes'][j]['id']
+            line = line.replace('MTA NYCT_','')
+            line = line.replace('MTABC_','')
+            df.loc[i,'busline'] = line
+            df.loc[i,'Latitude'] = data[i]['lat']
+            df.loc[i,'Longitude'] = data[i]['lon']
+            df.loc[i,'StopName'] = data[i]['name']
+            df.loc[i,'StopID'] = data[i]['id']
+            df.loc[i,'StopDirection'] = data[i]['direction']
+    df['StopID'] = df['StopID'].str.replace('MTA_', '')
+    return df.to_json(orient='records')
